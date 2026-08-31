@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from flask.config import Config
 import cv2
+from flask.config import Config
 
 from app.repositories.card_repository import CardRepository
 from app.services.card_detection_service import CardDetectionService
@@ -9,6 +9,7 @@ from app.services.card_matching_service import CardMatchingService
 from app.services.card_recognition_service import CardRecognitionService
 from app.services.ocr_service import OcrService
 from app.services.perspective_service import PerspectiveService
+from app.services.title_region_service import TitleRegionService
 
 
 def create_card_recognition_service(config: Config) -> CardRecognitionService:
@@ -31,6 +32,7 @@ def create_card_recognition_service(config: Config) -> CardRecognitionService:
             output_width=config["CARD_WARP_WIDTH"],
             output_height=config["CARD_WARP_HEIGHT"],
         ),
+        title_region_service=TitleRegionService(),
         ocr_service=OcrService(
             languages=config["OCR_LANGUAGES"],
             gpu=config["OCR_GPU"],

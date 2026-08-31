@@ -11,7 +11,7 @@ from app.repositories.card_repository import CardRepository
 
 def register_commands(app: Flask) -> None:
     @app.cli.command("update-scryfall-catalog")
-    @click.option("--bulk-type", default="default_cards", show_default=True)
+    @click.option("--bulk-type", default="all_cards", show_default=True)
     def update_scryfall_catalog(bulk_type: str) -> None:
         """Download Scryfall bulk data and import it into the local SQLite cache."""
         data_dir: Path = app.config["DATA_DIR"]

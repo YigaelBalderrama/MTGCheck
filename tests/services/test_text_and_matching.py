@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from app.exceptions.recognition_exception import RecognitionException
 from app.models.card import Card
 from app.services.card_matching_service import CardMatchingService
 from app.utils.text_utils import card_name_variants, normalize_card_name
@@ -31,22 +30,20 @@ class InMemoryCardRepository:
         return card
 
 
-class StubScryfallClient:
-    def __init__(self, card: Card | None = None, unavailable: bool = False) -> None:
-        self.card = card
-        self.unavailable = unavailable
-
-    def find_named_card(self, name: str) -> Card | None:
-        if self.unavailable:
-            raise RecognitionException("SCRYFALL_UNAVAILABLE", "No disponible", 503)
-        return self.card
-
-
-def make_card(name: str) -> Card:
+def make_card(
+    name: str,
+    printed_name: str | None = None,
+    oracle_name: str | None = None,
+    language: str = "en",
+) -> Card:
     return Card(
         scryfall_id=f"id-{normalize_card_name(name)}",
         name=name,
         normalized_name=normalize_card_name(name),
+        printed_name=printed_name,
+        normalized_printed_name=normalize_card_name(printed_name),
+        oracle_name=oracle_name or name,
+        language=language,
         set_name="Test Set",
         set_code="tst",
         collector_number="1",
@@ -81,7 +78,6 @@ def test_exact_match_returns_card():
     card = make_card("Sol Ring")
     service = CardMatchingService(
         repository=InMemoryCardRepository([card]),
-        scryfall_client=StubScryfallClient(),
         threshold=0.72,
     )
 
@@ -95,7 +91,6 @@ def test_fuzzy_match_returns_card_above_threshold():
     card = make_card("Llanowar Elves")
     service = CardMatchingService(
         repository=InMemoryCardRepository([card]),
-        scryfall_client=StubScryfallClient(),
         threshold=0.72,
     )
 
@@ -109,7 +104,6 @@ def test_match_below_threshold_is_not_accepted_by_caller_contract():
     card = make_card("Black Lotus")
     service = CardMatchingService(
         repository=InMemoryCardRepository([card]),
-        scryfall_client=StubScryfallClient(),
         threshold=0.95,
     )
 
@@ -118,23 +112,28 @@ def test_match_below_threshold_is_not_accepted_by_caller_contract():
     assert result.confidence < 0.95
 
 
-def test_scryfall_unavailable_does_not_break_local_matches():
-    card = make_card("Sol Ring")
+def test_spanish_printed_name_matches_local_index():
+    card = make_card(
+        name="Incinerar",
+        printed_name="Incinerar",
+        oracle_name="Incinerate",
+        language="es",
+    )
     service = CardMatchingService(
         repository=InMemoryCardRepository([card]),
-        scryfall_client=StubScryfallClient(unavailable=True),
         threshold=0.72,
     )
 
-    result = service.match("Sol Ring", ocr_confidence=0.95)
+    result = service.match("Incinerar", ocr_confidence=0.95)
 
     assert result.card == card
+    assert result.card.oracle_name == "Incinerate"
+    assert result.card.language == "es"
 
 
-def test_scryfall_unavailable_returns_no_remote_match_when_local_misses():
+def test_repository_local_miss_does_not_call_remote_or_invent_card():
     service = CardMatchingService(
         repository=InMemoryCardRepository([]),
-        scryfall_client=StubScryfallClient(unavailable=True),
         threshold=0.72,
     )
 

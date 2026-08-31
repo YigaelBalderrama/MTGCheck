@@ -42,6 +42,44 @@ def test_detection_separates_adjacent_cards_in_same_photo():
     assert len(detections) >= 3
 
 
+def test_detection_ignores_partial_card_touching_image_border():
+    image = np.full((700, 1000, 3), 35, dtype=np.uint8)
+    full_card = np.array([[220, 80], [500, 82], [498, 480], [218, 478]], dtype=np.int32)
+    partial_card = np.array(
+        [[-90, 90], [130, 85], [132, 470], [-88, 475]], dtype=np.int32
+    )
+    cv2.fillPoly(image, [full_card, partial_card], (235, 235, 235))
+    cv2.polylines(image, [full_card, partial_card], True, (5, 5, 5), 10)
+
+    detections = CardDetectionService(max_cards=10).detect_cards(image)
+
+    assert len(detections) == 1
+    x, _, _, _ = cv2.boundingRect(detections[0].polygon.astype(np.int32))
+    assert x > 150
+
+
+def test_detection_orders_cards_by_rows_then_columns():
+    image = np.full((900, 1200, 3), 35, dtype=np.uint8)
+    cards = [
+        np.array([[520, 90], [800, 90], [800, 490], [520, 490]], dtype=np.int32),
+        np.array([[90, 80], [370, 80], [370, 480], [90, 480]], dtype=np.int32),
+        np.array([[520, 530], [800, 530], [800, 880], [520, 880]], dtype=np.int32),
+        np.array([[90, 520], [370, 520], [370, 870], [90, 870]], dtype=np.int32),
+    ]
+    for card in cards:
+        cv2.fillPoly(image, [card], (235, 235, 235))
+        cv2.polylines(image, [card], True, (5, 5, 5), 8)
+
+    detections = CardDetectionService(max_cards=10).detect_cards(image)
+    x_positions = [
+        cv2.boundingRect(detection.polygon.astype(np.int32))[0]
+        for detection in detections[:4]
+    ]
+
+    assert len(detections) >= 4
+    assert x_positions == sorted(x_positions[:2]) + sorted(x_positions[2:4])
+
+
 def test_order_points_returns_top_left_top_right_bottom_right_bottom_left():
     points = np.array([[100, 300], [100, 100], [300, 100], [300, 300]], dtype=float)
     ordered = PerspectiveService().order_points(points)

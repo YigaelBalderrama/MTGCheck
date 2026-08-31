@@ -25,6 +25,7 @@ def create_app(config_name: str | None = None) -> Flask:
         db.create_all()
         _ensure_card_schema()
         card_recognition_service = create_card_recognition_service(app.config)
+        app.extensions["card_recognition_service"] = card_recognition_service
 
     app.register_blueprint(
         create_card_blueprint(
@@ -45,7 +46,8 @@ def _ensure_card_schema() -> None:
         return
 
     existing_columns = {
-        row[1] for row in db.session.execute(text("PRAGMA table_info(cards)")).fetchall()
+        row[1]
+        for row in db.session.execute(text("PRAGMA table_info(cards)")).fetchall()
     }
     column_definitions = {
         "printed_name": "VARCHAR(255)",

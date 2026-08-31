@@ -54,7 +54,9 @@ class CardRepository:
         if not normalized_name:
             return []
 
-        candidate_names = self._candidate_names(normalized_name, limit=max(limit * 4, 80))
+        candidate_names = self._candidate_names(
+            normalized_name, limit=max(limit * 4, 80)
+        )
         seen_card_ids: set[str] = set()
         cards: list[Card] = []
         for candidate_name in candidate_names:

@@ -5,7 +5,7 @@ import numpy as np
 
 
 class PerspectiveService:
-    def __init__(self, output_width: int = 630, output_height: int = 880) -> None:
+    def __init__(self, output_width: int = 448, output_height: int = 624) -> None:
         self.output_width = output_width
         self.output_height = output_height
 
@@ -41,7 +41,5 @@ class PerspectiveService:
     def orientation_candidates(self, image: np.ndarray) -> list[np.ndarray]:
         return [
             image,
-            cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE),
             cv2.rotate(image, cv2.ROTATE_180),
-            cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE),
         ]

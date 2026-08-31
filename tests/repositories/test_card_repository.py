@@ -12,7 +12,10 @@ def test_repository_imports_and_queries_local_bulk_source(db_app, tmp_path):
             [
                 {
                     "id": "scryfall-id",
-                    "name": "Sol Ring",
+                    "name": "Incinerate",
+                    "printed_name": "Incinerar",
+                    "oracle_name": "Incinerate",
+                    "lang": "es",
                     "set_name": "Commander Masters",
                     "set": "cmm",
                     "collector_number": "396",
@@ -28,10 +31,25 @@ def test_repository_imports_and_queries_local_bulk_source(db_app, tmp_path):
     with db_app.app_context():
         repository = CardRepository()
         imported = repository.import_scryfall_bulk_file(bulk_path)
-        exact = repository.find_by_exact_name("Sol Ring")
-        candidates = repository.find_candidates_by_name("Ring", limit=5)
+        exact = repository.find_by_exact_name("Incinerar")
+        oracle = repository.find_by_exact_name("Incinerate")
+        candidates = repository.find_candidates_by_name("Incinerar", limit=5)
 
     assert imported == 1
     assert exact is not None
     assert exact.scryfall_id == "scryfall-id"
-    assert candidates[0].name == "Sol Ring"
+    assert exact.oracle_name == "Incinerate"
+    assert exact.language == "es"
+    assert oracle is not None
+    assert candidates[0].printed_name == "Incinerar"
+
+
+def test_repository_does_not_use_network_for_lookup(db_app, monkeypatch):
+    def fail_network(*args, **kwargs):
+        raise AssertionError("Repository lookup must not use HTTP")
+
+    monkeypatch.setattr("requests.sessions.Session.request", fail_network)
+
+    with db_app.app_context():
+        repository = CardRepository()
+        assert repository.find_candidates_by_name("Unknown", limit=5) == []

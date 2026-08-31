@@ -16,15 +16,51 @@ class OcrResult:
 
 
 class OcrService:
-    def __init__(self, languages: list[str] | None = None, gpu: bool = False) -> None:
+    def __init__(
+        self,
+        languages: list[str] | None = None,
+        gpu: bool = False,
+        preload: bool = False,
+    ) -> None:
         self.languages = languages or ["en"]
         self.gpu = gpu
         self._reader: Any | None = None
+        if preload:
+            self._get_reader()
+
+    def extract_text(self, image: np.ndarray) -> OcrResult:
+        reader = self._get_reader()
+        raw_results = reader.readtext(
+            image,
+            detail=1,
+            paragraph=False,
+            decoder="greedy",
+            batch_size=1,
+        )
+        return self._best_result(raw_results)
+
+    def extract_batch(self, images: list[np.ndarray]) -> list[OcrResult]:
+        if not images:
+            return []
+
+        reader = self._get_reader()
+        if hasattr(reader, "readtext_batched"):
+            raw_batches = reader.readtext_batched(
+                images,
+                detail=1,
+                paragraph=False,
+                decoder="greedy",
+                batch_size=min(len(images), 16),
+            )
+            return [self._best_result(raw_results) for raw_results in raw_batches]
+
+        return [self.extract_text(image) for image in images]
 
     def extract_name(self, card_image: np.ndarray) -> OcrResult:
         region = preprocess_name_region(card_image)
-        reader = self._get_reader()
-        raw_results = reader.readtext(region, detail=1, paragraph=False)
+        return self.extract_text(region)
+
+    def _best_result(self, raw_results: list) -> OcrResult:
         if not raw_results:
             return OcrResult(text="", confidence=0.0)
 

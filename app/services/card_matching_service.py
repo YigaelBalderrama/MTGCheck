@@ -33,7 +33,7 @@ class CardMatchingService:
     def match(self, detected_text: str, ocr_confidence: float) -> MatchResult:
         normalized_text = normalize_card_name(detected_text)
         if not normalized_text:
-            return MatchResult(card=None, confidence=0.0)
+            return MatchResult(card=None, final_confidence=0.0)
 
         exact = self._find_exact_variant(normalized_text)
         if exact is not None:

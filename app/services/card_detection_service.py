@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 import cv2
 import numpy as np
@@ -53,6 +54,18 @@ class CardDetectionService:
             candidates, key=lambda candidate: candidate.area, reverse=True
         )
         deduplicated = self._remove_duplicates(candidates)
+        if self._should_run_grid_fallback(deduplicated):
+            deduplicated = self._remove_duplicates(
+                deduplicated
+                + self._recover_axis_aligned_cards_from_lines(
+                    resized=resized,
+                    scale=scale,
+                    image_width=original_width,
+                    image_height=original_height,
+                    min_area=min_area,
+                    max_area=max_area,
+                )
+            )
         return sorted(
             deduplicated[: self.max_cards],
             key=self._reading_order_key,
@@ -204,6 +217,122 @@ class CardDetectionService:
             ):
                 kept.append(detection)
         return kept
+
+    def _should_run_grid_fallback(self, detections: list[DetectedCard]) -> bool:
+        if len(detections) < min(6, self.max_cards):
+            return True
+        boxes = [cv2.boundingRect(item.polygon.astype(np.int32)) for item in detections]
+        widths = [box[2] for box in boxes]
+        median_width = float(np.median(widths)) if widths else 0.0
+        if median_width <= 0:
+            return False
+
+        rows: dict[int, list[tuple[int, int, int, int]]] = {}
+        for box in boxes:
+            _, y, _, height = box
+            row_bucket = int(y / max(height * 0.65, 1))
+            rows.setdefault(row_bucket, []).append(box)
+
+        for row_boxes in rows.values():
+            if len(row_boxes) < 2:
+                continue
+            sorted_boxes = sorted(row_boxes, key=lambda box: box[0])
+            for left, right in pairwise(sorted_boxes):
+                gap = right[0] - (left[0] + left[2])
+                if gap > median_width * 0.55:
+                    return True
+        return False
+
+    def _recover_axis_aligned_cards_from_lines(
+        self,
+        resized: np.ndarray,
+        scale: float,
+        image_width: int,
+        image_height: int,
+        min_area: float,
+        max_area: float,
+    ) -> list[DetectedCard]:
+        gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(blurred, 35, 110)
+        lines = cv2.HoughLinesP(
+            edges,
+            rho=1,
+            theta=np.pi / 180,
+            threshold=80,
+            minLineLength=int(min(resized.shape[:2]) * 0.12),
+            maxLineGap=18,
+        )
+        if lines is None:
+            return []
+
+        verticals: list[int] = []
+        horizontals: list[int] = []
+        for raw_line in lines[:, 0]:
+            x1, y1, x2, y2 = raw_line
+            dx = abs(x2 - x1)
+            dy = abs(y2 - y1)
+            if dy > dx * 4:
+                verticals.append(round((x1 + x2) / 2))
+            elif dx > dy * 4:
+                horizontals.append(round((y1 + y2) / 2))
+
+        vertical_groups = self._group_line_positions(verticals, tolerance=14)
+        horizontal_groups = self._group_line_positions(horizontals, tolerance=14)
+        detections: list[DetectedCard] = []
+
+        for left_index, left in enumerate(vertical_groups):
+            for right in vertical_groups[left_index + 1 :]:
+                width = right - left
+                if width <= 0:
+                    continue
+                for top_index, top in enumerate(horizontal_groups):
+                    for bottom in horizontal_groups[top_index + 1 :]:
+                        height = bottom - top
+                        if height <= 0:
+                            continue
+                        area = width * height
+                        if area < min_area or area > max_area:
+                            continue
+                        ratio = width / height
+                        if not 0.58 <= ratio <= 0.82:
+                            continue
+
+                        polygon = np.array(
+                            [
+                                [left, top],
+                                [right, top],
+                                [right, bottom],
+                                [left, bottom],
+                            ],
+                            dtype=np.float32,
+                        )
+                        if scale < 1.0:
+                            polygon = polygon / scale
+                            area = area / (scale * scale)
+                        if self._touches_image_border(
+                            polygon, image_width, image_height
+                        ):
+                            continue
+                        detections.append(
+                            DetectedCard(
+                                polygon=polygon,
+                                area=float(area),
+                                confidence=0.68,
+                            )
+                        )
+        return detections
+
+    def _group_line_positions(self, positions: list[int], tolerance: int) -> list[int]:
+        if not positions:
+            return []
+        groups: list[list[int]] = []
+        for position in sorted(positions):
+            if not groups or abs(position - groups[-1][-1]) > tolerance:
+                groups.append([position])
+            else:
+                groups[-1].append(position)
+        return [round(float(np.median(group))) for group in groups]
 
     def _intersection_over_union(
         self,

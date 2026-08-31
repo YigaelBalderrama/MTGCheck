@@ -31,8 +31,17 @@ Variables principales:
 - `DATABASE_URL`: SQLite local, por defecto `sqlite:///data/cards_cache.sqlite`.
 - `MAX_IMAGE_SIZE_MB`: tamaño máximo de imagen, por defecto `12`.
 - `RECOGNITION_CONFIDENCE_THRESHOLD`: umbral mínimo de reconocimiento, por defecto `0.72`.
+- `RECOVERY_CONFIDENCE_THRESHOLD`: umbral desde el que se intenta OCR de recuperación, por defecto `0.55`.
+- `MAX_CARDS_PER_IMAGE`: máximo de regiones completas a devolver, por defecto `20`.
+- `DETECTION_TARGET_MAX_DIMENSION`: lado mayor de la copia de detección, por defecto `1500`.
+- `CARD_WARP_WIDTH` y `CARD_WARP_HEIGHT`: resolución normalizada por carta, por defecto `448x624`.
+- `ENABLE_RECOGNITION_CACHE`: activa caché SHA-256 por contenido, por defecto `true`.
+- `RECOGNITION_CACHE_TTL_SECONDS` y `RECOGNITION_CACHE_MAX_ITEMS`: TTL y tamaño de caché.
+- `ENABLE_DIAGNOSTIC_METRICS`: incluye métricas internas en el JSON si está en `true`.
+- `OPENCV_NUM_THREADS`: threads de OpenCV. `0` deja la ejecución en modo controlado por OpenCV.
 - `OCR_LANGUAGES`: idiomas para EasyOCR, por defecto `en`.
 - `OCR_GPU`: habilita GPU para EasyOCR si está disponible.
+- `OCR_PRELOAD`: inicializa EasyOCR al arrancar la app si está en `true`.
 
 ## Catálogo Scryfall
 
@@ -43,7 +52,7 @@ $env:FLASK_APP="run.py"
 flask update-scryfall-catalog
 ```
 
-El comando descarga el bulk `default_cards` de Scryfall en `data/` e importa las cartas a SQLite. El endpoint puede consultar Scryfall como respaldo puntual, pero un fallo externo no impide devolver coincidencias del catálogo local.
+El comando descarga el bulk `all_cards` de Scryfall en `data/` e importa las cartas a SQLite, incluyendo `printed_name`, `oracle_name` y `lang` cuando están disponibles. El endpoint de reconocimiento no realiza consultas HTTP individuales a Scryfall; usa únicamente el índice local cargado en memoria.
 
 ## Ejecutar la API
 
@@ -72,6 +81,31 @@ Swagger:
 - UI: `http://localhost:5000/docs`
 - OpenAPI JSON: `http://localhost:5000/openapi.json`
 
+## Benchmark
+
+Ejecuta:
+
+```bash
+python -m benchmarks.recognition_benchmark \
+  tests/fixtures/multi_cards_reference.png \
+  --iterations 5 \
+  --warmup 1
+```
+
+Por defecto el benchmark desactiva la caché para medir detección, perspectiva, OCR y matching reales. Para medir caché:
+
+```bash
+python -m benchmarks.recognition_benchmark tests/fixtures/multi_cards_reference.png --use-cache
+```
+
+Salida incluida:
+
+- tiempo anterior, si puede medirse;
+- promedio, mediana y P95;
+- cartas detectadas y reconocidas;
+- exactitud contra la lista esperada;
+- métricas por etapa: `decode_ms`, `detection_ms`, `perspective_ms`, `title_preprocessing_ms`, `ocr_ms`, `matching_ms`, `total_ms`.
+
 ## Docker
 
 ```bash
@@ -98,7 +132,13 @@ Respuesta con reconocimientos:
       "recognized": true,
       "detected_text": "Sol Ring",
       "name": "Sol Ring",
+      "printed_name": "Sol Ring",
+      "oracle_name": "Sol Ring",
+      "language": "en",
       "confidence": 0.96,
+      "ocr_confidence": 0.91,
+      "name_match_confidence": 1.0,
+      "detection_confidence": 0.98,
       "scryfall_id": "scryfall-id",
       "set_name": "Commander Masters",
       "set_code": "cmm",
@@ -141,6 +181,31 @@ pytest
 ```
 
 Las pruebas usan mocks para OCR, repositorio y Scryfall; no dependen de Internet.
+
+La fotografía de regresión debe existir en:
+
+```text
+tests/fixtures/multi_cards_reference.png
+```
+
+En este workspace no se encontró una imagen adjunta fuera del `.venv`, por lo que la prueba de integración real se omite hasta que el archivo esté disponible. Cuando exista y el catálogo local esté importado, valida `cards_detected == 14` y `cards_recognized >= 13`.
+
+## Cambios de rendimiento
+
+| Área | Antes | Después |
+|---|---|---|
+| OCR | OCR por carta y por varias rotaciones | OCR batch sobre barras de título |
+| Orientación | 0, 90, 180 y 270 grados como camino normal | 0 grados en fase rápida; 180 y variantes solo en recuperación |
+| Resolución por carta | `630x880` | `448x624` configurable |
+| Matching | Consultas SQLite frecuentes y fallback HTTP Scryfall | Índice local en memoria y sin HTTP en reconocimiento |
+| Multidioma | Principalmente `name` | `name`, `printed_name`, `oracle_name`, `lang` desde `all_cards` |
+| Repetición exacta | Reprocesa imagen | Caché SHA-256 con TTL y tamaño máximo |
+
+Resultado medido en este entorno sin imagen adjunta:
+
+- Pruebas automatizadas: `33 passed, 1 skipped`.
+- La prueba omitida corresponde a `tests/fixtures/multi_cards_reference.png`.
+- Benchmark real contra la fotografía solicitada: no ejecutado porque el archivo no está en el workspace.
 
 ## Limitaciones
 

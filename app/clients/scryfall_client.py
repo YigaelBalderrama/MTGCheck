@@ -130,7 +130,9 @@ class ScryfallClient:
         return Card(
             scryfall_id=payload["id"],
             name=payload.get("printed_name") or payload["name"],
-            normalized_name=normalize_card_name(payload.get("printed_name") or payload["name"]),
+            normalized_name=normalize_card_name(
+                payload.get("printed_name") or payload["name"]
+            ),
             printed_name=payload.get("printed_name"),
             normalized_printed_name=normalize_card_name(payload.get("printed_name")),
             oracle_name=payload.get("oracle_name") or payload["name"],
