@@ -76,8 +76,6 @@ def register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(Exception)
     def handle_unexpected_error(error: Exception) -> tuple:
-        if app.config.get("DEBUG") or app.config.get("TESTING"):
-            raise error
         app.logger.exception("Unhandled recognition API error")
         return (
             jsonify(

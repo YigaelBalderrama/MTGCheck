@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
@@ -45,16 +46,44 @@ class OcrService:
 
         reader = self._get_reader()
         if hasattr(reader, "readtext_batched"):
-            raw_batches = reader.readtext_batched(
-                images,
-                detail=1,
-                paragraph=False,
-                decoder="greedy",
-                batch_size=min(len(images), 16),
-            )
-            return [self._best_result(raw_results) for raw_results in raw_batches]
+            return self._extract_batch_grouped_by_shape(reader, images)
 
         return [self.extract_text(image) for image in images]
+
+    def _extract_batch_grouped_by_shape(
+        self, reader: Any, images: list[np.ndarray]
+    ) -> list[OcrResult]:
+        grouped_indices: dict[tuple[int, ...], list[int]] = defaultdict(list)
+        for index, image in enumerate(images):
+            grouped_indices[tuple(image.shape)].append(index)
+
+        results = [OcrResult(text="", confidence=0.0) for _ in images]
+        for indices in grouped_indices.values():
+            batch_images = [images[index] for index in indices]
+            try:
+                raw_batches = reader.readtext_batched(
+                    batch_images,
+                    detail=1,
+                    paragraph=False,
+                    decoder="greedy",
+                    batch_size=min(len(batch_images), 16),
+                )
+            except ValueError:
+                raw_batches = [
+                    reader.readtext(
+                        image,
+                        detail=1,
+                        paragraph=False,
+                        decoder="greedy",
+                        batch_size=1,
+                    )
+                    for image in batch_images
+                ]
+
+            for original_index, raw_results in zip(indices, raw_batches, strict=True):
+                results[original_index] = self._best_result(raw_results)
+
+        return results
 
     def extract_name(self, card_image: np.ndarray) -> OcrResult:
         region = preprocess_name_region(card_image)
