@@ -3,6 +3,7 @@ from __future__ import annotations
 import cv2
 from flask.config import Config
 
+from app.clients.scryfall_client import ScryfallClient
 from app.repositories.card_repository import CardRepository
 from app.services.card_detection_service import CardDetectionService
 from app.services.card_matching_service import CardMatchingService
@@ -16,12 +17,28 @@ def create_card_recognition_service(config: Config) -> CardRecognitionService:
     if config["OPENCV_NUM_THREADS"] >= 0:
         cv2.setNumThreads(config["OPENCV_NUM_THREADS"])
 
-    repository = CardRepository()
-    repository.load_index()
-    matching_service = CardMatchingService(
-        repository=repository,
-        threshold=config["RECOGNITION_CONFIDENCE_THRESHOLD"],
+    scryfall_client = ScryfallClient(
+        base_url=config["SCRYFALL_BASE_URL"],
+        timeout_seconds=config["SCRYFALL_TIMEOUT_SECONDS"],
+        user_agent=config["SCRYFALL_USER_AGENT"],
+        accept_header=config["SCRYFALL_ACCEPT"],
+        min_request_interval_seconds=config["SCRYFALL_MIN_REQUEST_INTERVAL_SECONDS"],
     )
+    if config["CARD_LOOKUP_MODE"] == "scryfall_api":
+        matching_service = CardMatchingService(
+            threshold=config["RECOGNITION_CONFIDENCE_THRESHOLD"],
+            scryfall_client=scryfall_client,
+            lookup_mode="scryfall_api",
+        )
+    else:
+        repository = CardRepository()
+        repository.load_index()
+        matching_service = CardMatchingService(
+            repository=repository,
+            threshold=config["RECOGNITION_CONFIDENCE_THRESHOLD"],
+            scryfall_client=scryfall_client,
+            lookup_mode="sqlite",
+        )
 
     return CardRecognitionService(
         detection_service=CardDetectionService(

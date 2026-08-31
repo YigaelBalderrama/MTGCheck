@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from rapidfuzz import fuzz, process
 
+from app.clients.scryfall_client import ScryfallClient
+from app.exceptions.recognition_exception import RecognitionException
 from app.models.card import Card
 from app.repositories.card_repository import CardRepository
 from app.utils.text_utils import card_name_variants, normalize_card_name
@@ -24,16 +26,23 @@ class MatchResult:
 class CardMatchingService:
     def __init__(
         self,
-        repository: CardRepository,
+        repository: CardRepository | None = None,
         threshold: float = 0.72,
+        scryfall_client: ScryfallClient | None = None,
+        lookup_mode: str = "sqlite",
     ) -> None:
         self.repository = repository
         self.threshold = threshold
+        self.scryfall_client = scryfall_client
+        self.lookup_mode = lookup_mode
 
     def match(self, detected_text: str, ocr_confidence: float) -> MatchResult:
         normalized_text = normalize_card_name(detected_text)
         if not normalized_text:
             return MatchResult(card=None, final_confidence=0.0)
+
+        if self.lookup_mode == "scryfall_api":
+            return self._find_scryfall_match(detected_text, ocr_confidence)
 
         exact = self._find_exact_variant(normalized_text)
         if exact is not None:
@@ -52,6 +61,8 @@ class CardMatchingService:
         )
 
     def _find_exact_variant(self, normalized_text: str) -> Card | None:
+        if self.repository is None:
+            return None
         for variant in card_name_variants(normalized_text):
             card = self.repository.find_by_exact_name(variant)
             if card is not None:
@@ -61,6 +72,9 @@ class CardMatchingService:
     def _find_fuzzy_local(
         self, normalized_text: str, ocr_confidence: float
     ) -> MatchResult:
+        if self.repository is None:
+            return MatchResult(card=None, final_confidence=0.0)
+
         cards = self.repository.find_candidates_by_name(normalized_text, limit=25)
         if not cards:
             cards = self.repository.list_all()
@@ -86,6 +100,45 @@ class CardMatchingService:
             final_confidence=confidence,
             name_match_confidence=name_match_confidence,
             source="local_fuzzy",
+        )
+
+    def _find_scryfall_match(
+        self, detected_text: str, ocr_confidence: float
+    ) -> MatchResult:
+        if self.scryfall_client is None:
+            return MatchResult(card=None, final_confidence=0.0)
+
+        try:
+            card = self.scryfall_client.find_named_card(detected_text)
+        except RecognitionException:
+            return MatchResult(
+                card=None,
+                final_confidence=0.0,
+                source="scryfall_unavailable",
+            )
+
+        if card is None:
+            return MatchResult(card=None, final_confidence=0.0)
+
+        normalized_text = normalize_card_name(detected_text)
+        searchable_names = {
+            variant
+            for value in (card.name, card.printed_name, card.oracle_name)
+            for variant in card_name_variants(value)
+        }
+        name_match_confidence = max(
+            (fuzz.WRatio(normalized_text, name) / 100.0 for name in searchable_names),
+            default=0.0,
+        )
+        final_confidence = self._combine_confidence(
+            name_match_confidence,
+            ocr_confidence,
+        )
+        return MatchResult(
+            card=card,
+            final_confidence=final_confidence,
+            name_match_confidence=name_match_confidence,
+            source="scryfall_api",
         )
 
     def _combine_confidence(

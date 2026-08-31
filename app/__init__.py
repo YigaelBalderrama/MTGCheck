@@ -22,8 +22,9 @@ def create_app(config_name: str | None = None) -> Flask:
     limiter.init_app(app)
 
     with app.app_context():
-        db.create_all()
-        _ensure_card_schema()
+        if app.config["CARD_LOOKUP_MODE"] != "scryfall_api":
+            db.create_all()
+            _ensure_card_schema()
         card_recognition_service = create_card_recognition_service(app.config)
         app.extensions["card_recognition_service"] = card_recognition_service
 

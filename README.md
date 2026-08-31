@@ -29,6 +29,7 @@ Copia `.env.example` a `.env` y ajusta al menos `SCRYFALL_USER_AGENT` con un ide
 Variables principales:
 
 - `DATABASE_URL`: SQLite local, por defecto `sqlite:///data/cards_cache.sqlite`.
+- `CARD_LOOKUP_MODE`: `sqlite` usa catálogo local; `scryfall_api` evita SQLite en reconocimiento y consulta Scryfall por cada texto OCR.
 - `MAX_IMAGE_SIZE_MB`: tamaño máximo de imagen, por defecto `12`.
 - `RECOGNITION_CONFIDENCE_THRESHOLD`: umbral mínimo de reconocimiento, por defecto `0.72`.
 - `RECOVERY_CONFIDENCE_THRESHOLD`: umbral desde el que se intenta OCR de recuperación, por defecto `0.55`.
@@ -53,6 +54,14 @@ flask update-scryfall-catalog
 ```
 
 El comando descarga el bulk `all_cards` de Scryfall en `data/` e importa las cartas a SQLite, incluyendo `printed_name`, `oracle_name` y `lang` cuando están disponibles. El endpoint de reconocimiento no realiza consultas HTTP individuales a Scryfall; usa únicamente el índice local cargado en memoria.
+
+Modo sin SQLite:
+
+```env
+CARD_LOOKUP_MODE=scryfall_api
+```
+
+En este modo no se carga el índice local al arrancar y el reconocimiento consulta `cards/named` de Scryfall con `fuzzy=<texto OCR>`. Es más simple para desarrollo, pero depende de Internet, agrega latencia por carta detectada y está sujeto a rate limits. La caché en memoria del cliente evita repetir consultas por el mismo texto dentro del proceso.
 
 ## Ejecutar la API
 

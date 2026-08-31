@@ -39,6 +39,7 @@ class BaseConfig:
     DATA_DIR = DATA_DIR
     SQLALCHEMY_DATABASE_URI = _database_url()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    CARD_LOOKUP_MODE = os.getenv("CARD_LOOKUP_MODE", "sqlite").lower()
 
     MAX_CONTENT_LENGTH = int(os.getenv("MAX_IMAGE_SIZE_MB", "12")) * 1024 * 1024
     ALLOWED_IMAGE_MIME_TYPES: ClassVar[set[str]] = {
@@ -106,6 +107,7 @@ class TestingConfig(BaseConfig):
     ENV = "testing"
     TESTING = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+    CARD_LOOKUP_MODE = "sqlite"
     RATELIMIT_ENABLED = False
 
 

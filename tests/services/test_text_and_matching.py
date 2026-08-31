@@ -30,6 +30,21 @@ class InMemoryCardRepository:
         return card
 
 
+class StubScryfallClient:
+    def __init__(self, card: Card | None = None, unavailable: bool = False) -> None:
+        self.card = card
+        self.unavailable = unavailable
+        self.calls = 0
+
+    def find_named_card(self, name: str) -> Card | None:
+        self.calls += 1
+        if self.unavailable:
+            from app.exceptions.recognition_exception import RecognitionException
+
+            raise RecognitionException("SCRYFALL_UNAVAILABLE", "No disponible", 503)
+        return self.card
+
+
 def make_card(
     name: str,
     printed_name: str | None = None,
@@ -138,6 +153,36 @@ def test_repository_local_miss_does_not_call_remote_or_invent_card():
     )
 
     result = service.match("Unknown Card", ocr_confidence=0.9)
+
+    assert result.card is None
+    assert result.confidence == 0.0
+
+
+def test_scryfall_api_mode_matches_remote_card():
+    card = make_card("Sol Ring")
+    scryfall_client = StubScryfallClient(card=card)
+    service = CardMatchingService(
+        scryfall_client=scryfall_client,
+        lookup_mode="scryfall_api",
+        threshold=0.72,
+    )
+
+    result = service.match("Sol Ring", ocr_confidence=0.95)
+
+    assert result.card == card
+    assert result.source == "scryfall_api"
+    assert result.confidence >= 0.9
+    assert scryfall_client.calls == 1
+
+
+def test_scryfall_api_mode_returns_no_match_when_unavailable():
+    service = CardMatchingService(
+        scryfall_client=StubScryfallClient(unavailable=True),
+        lookup_mode="scryfall_api",
+        threshold=0.72,
+    )
+
+    result = service.match("Sol Ring", ocr_confidence=0.95)
 
     assert result.card is None
     assert result.confidence == 0.0
