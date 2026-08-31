@@ -265,7 +265,7 @@ class CardRecognitionService:
 
     def _to_dto(self, item: CardWorkItem) -> RecognizedCardDto:
         final_confidence = self._final_confidence(item)
-        recognized = (
+        recognized = bool(
             item.match_result.card is not None
             and final_confidence >= self.confidence_threshold
         )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -48,15 +49,24 @@ class ScryfallClient:
         self._named_cache[normalized_name] = card
         return card
 
-    def get_bulk_data(self, bulk_type: str = "default_cards") -> dict[str, Any]:
-        payload = self._get(f"/bulk-data/{bulk_type}", params=None)
-        if payload is None:
+    def get_bulk_data(self, bulk_type: str = "all_cards") -> dict[str, Any]:
+        payload = self._get("/bulk-data", params=None)
+        if payload is None or "data" not in payload:
             raise RecognitionException(
                 code="SCRYFALL_UNAVAILABLE",
-                message="Scryfall no está disponible temporalmente.",
+                message="Scryfall no esta disponible temporalmente.",
                 status_code=503,
             )
-        return payload
+
+        for bulk_data in payload["data"]:
+            if bulk_data.get("type") == bulk_type:
+                return bulk_data
+
+        raise RecognitionException(
+            code="SCRYFALL_UNAVAILABLE",
+            message=f"No se encontro el bulk '{bulk_type}' en Scryfall.",
+            status_code=503,
+        )
 
     def download_bulk_file(self, download_uri: str) -> bytes:
         self._respect_rate_limit()
@@ -65,24 +75,32 @@ class ScryfallClient:
         except requests.RequestException as exc:
             raise RecognitionException(
                 code="SCRYFALL_UNAVAILABLE",
-                message="Scryfall no está disponible temporalmente.",
+                message="Scryfall no esta disponible temporalmente.",
                 status_code=503,
             ) from exc
 
-        if response.status_code == 429:
-            raise RecognitionException(
-                code="RATE_LIMIT_EXCEEDED",
-                message="Scryfall rechazó temporalmente las solicitudes por límite de frecuencia.",
-                status_code=429,
-            )
-        if response.status_code >= 500:
+        self._raise_for_external_error(response)
+        return response.content
+
+    def download_bulk_file_to_path(self, download_uri: str, target_path: Path) -> None:
+        self._respect_rate_limit()
+        try:
+            with self.session.get(
+                download_uri,
+                timeout=self.timeout_seconds * 12,
+                stream=True,
+            ) as response:
+                self._raise_for_external_error(response)
+                with target_path.open("wb") as target_file:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            target_file.write(chunk)
+        except requests.RequestException as exc:
             raise RecognitionException(
                 code="SCRYFALL_UNAVAILABLE",
-                message="Scryfall no está disponible temporalmente.",
+                message="Scryfall no esta disponible temporalmente.",
                 status_code=503,
-            )
-        response.raise_for_status()
-        return response.content
+            ) from exc
 
     def _get(self, path: str, params: dict[str, Any] | None) -> dict[str, Any] | None:
         self._respect_rate_limit()
@@ -95,26 +113,29 @@ class ScryfallClient:
         except requests.RequestException as exc:
             raise RecognitionException(
                 code="SCRYFALL_UNAVAILABLE",
-                message="Scryfall no está disponible temporalmente.",
+                message="Scryfall no esta disponible temporalmente.",
                 status_code=503,
             ) from exc
 
         if response.status_code == 404:
             return None
+        self._raise_for_external_error(response)
+        return response.json()
+
+    def _raise_for_external_error(self, response: requests.Response) -> None:
         if response.status_code == 429:
             raise RecognitionException(
                 code="RATE_LIMIT_EXCEEDED",
-                message="Scryfall rechazó temporalmente las solicitudes por límite de frecuencia.",
+                message="Scryfall rechazo temporalmente las solicitudes por limite de frecuencia.",
                 status_code=429,
             )
         if response.status_code >= 500:
             raise RecognitionException(
                 code="SCRYFALL_UNAVAILABLE",
-                message="Scryfall no está disponible temporalmente.",
+                message="Scryfall no esta disponible temporalmente.",
                 status_code=503,
             )
         response.raise_for_status()
-        return response.json()
 
     def _respect_rate_limit(self) -> None:
         elapsed = time.monotonic() - self._last_request_at
@@ -127,12 +148,11 @@ class ScryfallClient:
         if not image_uris and payload.get("card_faces"):
             image_uris = payload["card_faces"][0].get("image_uris") or {}
 
+        display_name = payload.get("printed_name") or payload["name"]
         return Card(
             scryfall_id=payload["id"],
-            name=payload.get("printed_name") or payload["name"],
-            normalized_name=normalize_card_name(
-                payload.get("printed_name") or payload["name"]
-            ),
+            name=display_name,
+            normalized_name=normalize_card_name(display_name),
             printed_name=payload.get("printed_name"),
             normalized_printed_name=normalize_card_name(payload.get("printed_name")),
             oracle_name=payload.get("oracle_name") or payload["name"],
@@ -143,5 +163,5 @@ class ScryfallClient:
             image_url=image_uris.get("normal") or image_uris.get("large"),
             scryfall_url=payload.get("scryfall_uri"),
             prices=payload.get("prices"),
-            raw_data=payload,
+            raw_data=None,
         )

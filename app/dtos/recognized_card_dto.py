@@ -10,7 +10,7 @@ class PointDto:
     y: int
 
     def to_dict(self) -> dict[str, int]:
-        return {"x": self.x, "y": self.y}
+        return {"x": int(self.x), "y": int(self.y)}
 
 
 @dataclass(frozen=True)
@@ -37,17 +37,17 @@ class RecognizedCardDto:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "index": self.index,
-            "recognized": self.recognized,
+            "index": int(self.index),
+            "recognized": bool(self.recognized),
             "detected_text": self.detected_text,
             "name": self.name,
             "printed_name": self.printed_name,
             "oracle_name": self.oracle_name,
             "language": self.language,
-            "confidence": round(self.confidence, 4),
-            "ocr_confidence": round(self.ocr_confidence, 4),
-            "name_match_confidence": round(self.name_match_confidence, 4),
-            "detection_confidence": round(self.detection_confidence, 4),
+            "confidence": round(float(self.confidence), 4),
+            "ocr_confidence": round(float(self.ocr_confidence), 4),
+            "name_match_confidence": round(float(self.name_match_confidence), 4),
+            "detection_confidence": round(float(self.detection_confidence), 4),
             "scryfall_id": self.scryfall_id,
             "set_name": self.set_name,
             "set_code": self.set_code,

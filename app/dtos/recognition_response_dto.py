@@ -16,11 +16,13 @@ class RecognitionResponseDto:
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
-            "cards_detected": self.cards_detected,
-            "cards_recognized": self.cards_recognized,
-            "processing_time_ms": self.processing_time_ms,
+            "cards_detected": int(self.cards_detected),
+            "cards_recognized": int(self.cards_recognized),
+            "processing_time_ms": int(self.processing_time_ms),
             "cards": [card.to_dict() for card in self.cards],
         }
         if self.metrics is not None:
-            payload["metrics"] = self.metrics
+            payload["metrics"] = {
+                key: int(value) for key, value in self.metrics.items()
+            }
         return payload

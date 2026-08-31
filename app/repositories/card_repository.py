@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import gzip
 import json
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+
+from sqlalchemy.orm import load_only
 
 from app.extensions import db
 from app.models.card import Card
@@ -20,6 +23,7 @@ class CardRepository:
     def __init__(self) -> None:
         self._index_loaded = False
         self._exact_index: dict[str, Card] = {}
+        self._exact_index_priority: dict[str, int] = {}
         self._trigram_index: dict[str, set[str]] = defaultdict(set)
         self._length_index: dict[int, set[str]] = defaultdict(set)
         self._indexed_names: dict[str, IndexedName] = {}
@@ -29,13 +33,37 @@ class CardRepository:
             return
 
         self._exact_index.clear()
+        self._exact_index_priority.clear()
         self._trigram_index.clear()
         self._length_index.clear()
         self._indexed_names.clear()
 
-        for card in Card.query.order_by(Card.name.asc()).all():
-            for name in self._searchable_names(card):
-                self._exact_index.setdefault(name, card)
+        for card in (
+            Card.query.options(
+                load_only(
+                    Card.scryfall_id,
+                    Card.name,
+                    Card.normalized_name,
+                    Card.printed_name,
+                    Card.normalized_printed_name,
+                    Card.oracle_name,
+                    Card.language,
+                    Card.set_name,
+                    Card.set_code,
+                    Card.collector_number,
+                    Card.image_url,
+                    Card.scryfall_url,
+                    Card.prices,
+                )
+            )
+            .order_by(Card.language.asc(), Card.name.asc())
+            .all()
+        ):
+            for name, priority in self._searchable_names(card).items():
+                existing_priority = self._exact_index_priority.get(name)
+                if existing_priority is None or priority < existing_priority:
+                    self._exact_index[name] = card
+                    self._exact_index_priority[name] = priority
                 self._indexed_names.setdefault(name, IndexedName(value=name, card=card))
                 self._length_index[len(name)].add(name)
                 for trigram in self._trigrams(name):
@@ -97,28 +125,56 @@ class CardRepository:
 
     def bulk_save_or_update(self, cards: list[Card]) -> int:
         saved = 0
-        for card in cards:
-            existing = self.find_by_scryfall_id(card.scryfall_id)
-            if existing is None:
-                db.session.add(card)
-            else:
-                self._apply_card_values(existing, card)
-            saved += 1
-        db.session.commit()
+        for batch in self._chunks(cards, size=500):
+            existing_cards = {
+                card.scryfall_id: card
+                for card in Card.query.filter(
+                    Card.scryfall_id.in_([card.scryfall_id for card in batch])
+                ).all()
+            }
+            for card in batch:
+                existing = existing_cards.get(card.scryfall_id)
+                if existing is None:
+                    db.session.add(card)
+                else:
+                    self._apply_card_values(existing, card)
+                saved += 1
+            db.session.commit()
         self._index_loaded = False
         return saved
 
     def import_scryfall_bulk_file(self, path: str | Path) -> int:
-        bulk_path = Path(path)
-        with bulk_path.open("r", encoding="utf-8") as bulk_file:
-            payload = json.load(bulk_file)
+        imported = 0
+        batch: list[Card] = []
+        for payload in self._iter_scryfall_payloads(Path(path)):
+            card = self._card_from_scryfall_payload(payload)
+            if card is None:
+                continue
+            batch.append(card)
+            if len(batch) >= 500:
+                imported += self.bulk_save_or_update(batch)
+                batch = []
+        if batch:
+            imported += self.bulk_save_or_update(batch)
+        return imported
 
-        cards = [
-            card
-            for item in payload
-            if (card := self._card_from_scryfall_payload(item)) is not None
-        ]
-        return self.bulk_save_or_update(cards)
+    def _iter_scryfall_payloads(self, path: Path):
+        opener = gzip.open if path.suffix == ".gz" else open
+        with opener(path, "rt", encoding="utf-8") as bulk_file:
+            first_character = bulk_file.read(1)
+            bulk_file.seek(0)
+            if first_character == "[":
+                yield from json.load(bulk_file)
+                return
+
+            for line in bulk_file:
+                stripped = line.strip()
+                if stripped:
+                    yield json.loads(stripped)
+
+    def _chunks(self, cards: list[Card], size: int):
+        for index in range(0, len(cards), size):
+            yield cards[index : index + size]
 
     def _candidate_names(self, normalized_name: str, limit: int) -> list[str]:
         scores: dict[str, int] = defaultdict(int)
@@ -143,17 +199,28 @@ class CardRepository:
             )[:limit]
         ]
 
-    def _searchable_names(self, card: Card) -> set[str]:
-        names: set[str] = set()
-        for value in {
-            card.name,
-            card.printed_name,
-            card.oracle_name,
-            card.normalized_name,
-            card.normalized_printed_name,
-        }:
-            names.update(card_name_variants(value))
-        return {name for name in names if name}
+    def _searchable_names(self, card: Card) -> dict[str, int]:
+        names: dict[str, int] = {}
+        self._add_searchable_names(names, card.name, priority=0)
+        self._add_searchable_names(names, card.printed_name, priority=0)
+        self._add_searchable_names(names, card.normalized_name, priority=0)
+        self._add_searchable_names(names, card.normalized_printed_name, priority=0)
+        oracle_priority = 0 if card.language == "en" else 2
+        self._add_searchable_names(names, card.oracle_name, priority=oracle_priority)
+        return names
+
+    def _add_searchable_names(
+        self,
+        names: dict[str, int],
+        value: str | None,
+        priority: int,
+    ) -> None:
+        for variant in card_name_variants(value):
+            if not variant:
+                continue
+            existing_priority = names.get(variant)
+            if existing_priority is None or priority < existing_priority:
+                names[variant] = priority
 
     def _trigrams(self, value: str) -> set[str]:
         compact = f"  {value}  "
@@ -187,7 +254,7 @@ class CardRepository:
             image_url=image_uris.get("normal") or image_uris.get("large"),
             scryfall_url=payload.get("scryfall_uri"),
             prices=payload.get("prices"),
-            raw_data=payload,
+            raw_data=None,
         )
 
     def _apply_card_values(self, target: Card, source: Card) -> None:

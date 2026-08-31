@@ -8,6 +8,27 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
+DATA_DIR = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
+
+
+def _database_url() -> str:
+    configured_url = os.getenv("DATABASE_URL")
+    if not configured_url:
+        return f"sqlite:///{DATA_DIR / 'cards_cache.sqlite'}"
+
+    sqlite_prefix = "sqlite:///"
+    if not configured_url.startswith(sqlite_prefix):
+        return configured_url
+
+    sqlite_path = configured_url.removeprefix(sqlite_prefix)
+    if sqlite_path == ":memory:":
+        return configured_url
+
+    path = Path(sqlite_path)
+    if path.is_absolute():
+        return configured_url
+
+    return f"sqlite:///{BASE_DIR / path}"
 
 
 class BaseConfig:
@@ -15,10 +36,8 @@ class BaseConfig:
     TESTING = False
     DEBUG = False
 
-    DATA_DIR = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
-    SQLALCHEMY_DATABASE_URI = os.getenv(
-        "DATABASE_URL", f"sqlite:///{DATA_DIR / 'cards_cache.sqlite'}"
-    )
+    DATA_DIR = DATA_DIR
+    SQLALCHEMY_DATABASE_URI = _database_url()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     MAX_CONTENT_LENGTH = int(os.getenv("MAX_IMAGE_SIZE_MB", "12")) * 1024 * 1024
@@ -37,7 +56,7 @@ class BaseConfig:
     )
     MAX_CARDS_PER_IMAGE = int(os.getenv("MAX_CARDS_PER_IMAGE", "20"))
     DETECTION_TARGET_MAX_DIMENSION = int(
-        os.getenv("DETECTION_TARGET_MAX_DIMENSION", "1500")
+        os.getenv("DETECTION_TARGET_MAX_DIMENSION", "1600")
     )
     CARD_WARP_WIDTH = int(os.getenv("CARD_WARP_WIDTH", "448"))
     CARD_WARP_HEIGHT = int(os.getenv("CARD_WARP_HEIGHT", "624"))

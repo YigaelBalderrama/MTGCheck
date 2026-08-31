@@ -27,10 +27,19 @@ def register_commands(app: Flask) -> None:
             ],
         )
         bulk_metadata = client.get_bulk_data(bulk_type)
-        download_uri = bulk_metadata["download_uri"]
-        target_path = data_dir / f"scryfall-{bulk_type}.json"
+        download_uri = bulk_metadata.get("jsonl_download_uri") or bulk_metadata.get(
+            "download_uri"
+        )
+        if not download_uri:
+            raise click.ClickException(
+                f"Scryfall bulk '{bulk_type}' no contiene URI de descarga."
+            )
+        extension = ".jsonl.gz" if download_uri.endswith(".gz") else ".json"
+        target_path = data_dir / f"scryfall-{bulk_type}{extension}"
 
-        target_path.write_bytes(client.download_bulk_file(download_uri))
+        click.echo(f"Downloading {bulk_type} catalog to {target_path}...")
+        client.download_bulk_file_to_path(download_uri, target_path)
 
+        click.echo("Importing cards into SQLite...")
         imported = CardRepository().import_scryfall_bulk_file(target_path)
         click.echo(f"Imported {imported} cards into the local catalog.")

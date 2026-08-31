@@ -66,8 +66,17 @@ class CardDetectionService:
                     max_area=max_area,
                 )
             )
+        deduplicated = self._filter_full_card_regions(deduplicated)
+        deduplicated = self._remove_duplicates(
+            deduplicated
+            + self._recover_grid_gaps_from_existing(
+                detections=deduplicated,
+                image_width=original_width,
+                image_height=original_height,
+            )
+        )
         return sorted(
-            deduplicated[: self.max_cards],
+            self._filter_full_card_regions(deduplicated)[: self.max_cards],
             key=self._reading_order_key,
         )
 
@@ -217,6 +226,131 @@ class CardDetectionService:
             ):
                 kept.append(detection)
         return kept
+
+    def _filter_full_card_regions(
+        self, detections: list[DetectedCard]
+    ) -> list[DetectedCard]:
+        if len(detections) <= 2:
+            return detections
+
+        portrait_detections = [
+            detection
+            for detection in detections
+            if self._axis_aligned_ratio(detection) <= 0.95
+        ]
+        if len(portrait_detections) <= 2:
+            return portrait_detections
+
+        areas = np.array([detection.area for detection in portrait_detections])
+        median_area = float(np.median(areas))
+        return [
+            detection
+            for detection in portrait_detections
+            if detection.area >= median_area * 0.55
+        ]
+
+    def _axis_aligned_ratio(self, detection: DetectedCard) -> float:
+        _, _, width, height = cv2.boundingRect(detection.polygon.astype(np.int32))
+        if height == 0:
+            return 999.0
+        return width / height
+
+    def _recover_grid_gaps_from_existing(
+        self,
+        detections: list[DetectedCard],
+        image_width: int,
+        image_height: int,
+    ) -> list[DetectedCard]:
+        if len(detections) < 4:
+            return []
+
+        boxes = [cv2.boundingRect(item.polygon.astype(np.int32)) for item in detections]
+        median_width = float(np.median([box[2] for box in boxes]))
+        median_height = float(np.median([box[3] for box in boxes]))
+        if median_width <= 0 or median_height <= 0:
+            return []
+
+        rows = self._cluster_boxes_by_center_y(boxes, tolerance=median_height * 0.7)
+        if len(rows) < 2:
+            return []
+
+        column_centers = self._cluster_positions(
+            [x + width / 2 for x, _, width, _ in boxes],
+            tolerance=median_width * 0.45,
+        )
+        if len(column_centers) < 3:
+            return []
+
+        recovered: list[DetectedCard] = []
+        for row_boxes in rows:
+            row_center_y = float(
+                np.median([y + height / 2 for _, y, _, height in row_boxes])
+            )
+            for center_x in column_centers:
+                if self._row_has_column(row_boxes, center_x, median_width * 0.5):
+                    continue
+
+                left = center_x - median_width / 2
+                top = row_center_y - median_height / 2
+                right = center_x + median_width / 2
+                bottom = row_center_y + median_height / 2
+                polygon = np.array(
+                    [[left, top], [right, top], [right, bottom], [left, bottom]],
+                    dtype=np.float32,
+                )
+                if self._touches_image_border(polygon, image_width, image_height):
+                    continue
+                recovered.append(
+                    DetectedCard(
+                        polygon=polygon,
+                        area=median_width * median_height,
+                        confidence=0.62,
+                    )
+                )
+        return recovered
+
+    def _cluster_boxes_by_center_y(
+        self,
+        boxes: list[tuple[int, int, int, int]],
+        tolerance: float,
+    ) -> list[list[tuple[int, int, int, int]]]:
+        rows: list[list[tuple[int, int, int, int]]] = []
+        for box in sorted(boxes, key=lambda item: item[1] + item[3] / 2):
+            center_y = box[1] + box[3] / 2
+            if not rows:
+                rows.append([box])
+                continue
+
+            row_center = float(np.median([item[1] + item[3] / 2 for item in rows[-1]]))
+            if abs(center_y - row_center) <= tolerance:
+                rows[-1].append(box)
+            else:
+                rows.append([box])
+        return [sorted(row, key=lambda item: item[0]) for row in rows]
+
+    def _cluster_positions(
+        self, positions: list[float], tolerance: float
+    ) -> list[float]:
+        clusters: list[list[float]] = []
+        for position in sorted(positions):
+            if (
+                not clusters
+                or abs(position - float(np.median(clusters[-1]))) > tolerance
+            ):
+                clusters.append([position])
+            else:
+                clusters[-1].append(position)
+        return [float(np.median(cluster)) for cluster in clusters]
+
+    def _row_has_column(
+        self,
+        row_boxes: list[tuple[int, int, int, int]],
+        center_x: float,
+        tolerance: float,
+    ) -> bool:
+        return any(
+            abs((x + width / 2) - center_x) <= tolerance for x, _, width, _ in row_boxes
+        )
 
     def _should_run_grid_fallback(self, detections: list[DetectedCard]) -> bool:
         if len(detections) < min(6, self.max_cards):
