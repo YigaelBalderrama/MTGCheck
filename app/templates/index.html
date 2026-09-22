@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MTG Card Scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="scanner-panel" aria-labelledby="page-title">
+        <div class="copy">
+          <p class="eyebrow">Magic: The Gathering</p>
+          <h1 id="page-title">Reconocedor de cartas</h1>
+          <p class="summary">
+            Sube una foto de una o varias cartas y la API detectara los nombres con OCR.
+          </p>
+        </div>
+
+        <form id="recognition-form" class="upload-card" data-endpoint="/api/cards/recognize">
+          <label id="drop-zone" class="drop-zone" for="image-input">
+            <input id="image-input" name="image" type="file" accept="image/png,image/jpeg,image/webp">
+            <span class="drop-icon" aria-hidden="true">+</span>
+            <span class="drop-title">Selecciona una imagen</span>
+            <span class="drop-hint">PNG, JPG o WEBP</span>
+          </label>
+
+          <div class="preview-frame">
+            <img id="preview-image" alt="Vista previa de la imagen seleccionada">
+            <div id="empty-preview" class="empty-preview">Vista previa</div>
+          </div>
+
+          <button id="submit-button" class="primary-action" type="submit">
+            Reconocer cartas
+          </button>
+        </form>
+      </section>
+
+      <section class="results-panel" aria-labelledby="results-title">
+        <div class="results-header">
+          <div>
+            <p class="eyebrow">Resultado</p>
+            <h2 id="results-title">Cartas detectadas</h2>
+          </div>
+          <div id="status-pill" class="status-pill">Esperando imagen</div>
+        </div>
+
+        <div id="message" class="message" role="status"></div>
+        <div id="metrics" class="metrics" aria-live="polite"></div>
+        <div id="cards-grid" class="cards-grid"></div>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

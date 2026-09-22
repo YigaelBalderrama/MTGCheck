@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: mtg-viewer-api
+    env: docker
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: FLASK_APP
+        value: run.py
+      - key: CARD_LOOKUP_MODE
+        value: scryfall_api
+      - key: OCR_GPU
+        value: false
+      - key: OCR_PRELOAD
+        value: false
+      - key: SCRYFALL_USER_AGENT
+        sync: false

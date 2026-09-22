@@ -8,6 +8,7 @@ from app.config import get_config
 from app.controllers.card_recognition_controller import create_card_blueprint
 from app.controllers.docs_controller import docs_blueprint
 from app.controllers.health_controller import health_blueprint
+from app.controllers.ui_controller import ui_blueprint
 from app.exceptions.error_handlers import register_error_handlers
 from app.extensions import db, limiter
 from app.services.factory import create_card_recognition_service
@@ -28,6 +29,7 @@ def create_app(config_name: str | None = None) -> Flask:
         card_recognition_service = create_card_recognition_service(app.config)
         app.extensions["card_recognition_service"] = card_recognition_service
 
+    app.register_blueprint(ui_blueprint)
     app.register_blueprint(
         create_card_blueprint(
             card_recognition_service,

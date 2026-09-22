@@ -9,7 +9,16 @@ def test_health(client):
 
 
 def test_api_info(client):
-    response = client.get("/")
+    response = client.get("/api")
 
     assert response.status_code == 200
     assert response.get_json()["endpoints"]["recognize_cards"] == "/api/cards/recognize"
+
+
+def test_home_serves_card_scanner_page(client):
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.mimetype == "text/html"
+    assert b"MTG Card Scanner" in response.data
+    assert b"/api/cards/recognize" in response.data
