@@ -8,5 +8,6 @@ htmlcov/
 data/*.sqlite
 data/*.sqlite-*
 data/scryfall-*.json
+data/scryfall-*.jsonl.gz
 tests/fixtures/multi_cards_reference.png
 .idea/
