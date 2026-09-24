@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>MTG Card Scanner</title>
+    <title>Magic Card Scanner</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   </head>
   <body>
@@ -11,27 +11,37 @@
       <section class="scanner-panel" aria-labelledby="page-title">
         <div class="copy">
           <p class="eyebrow">Magic: The Gathering</p>
-          <h1 id="page-title">Reconocedor de cartas</h1>
+          <h1 id="page-title">Card Scanner</h1>
           <p class="summary">
-            Sube una foto de una o varias cartas y la API detectara los nombres con OCR.
+            Upload a clear photo of one or more cards. The scanner will detect card
+            borders, read title text, and match recognized names.
           </p>
         </div>
 
         <form id="recognition-form" class="upload-card" data-endpoint="/api/cards/recognize">
           <label id="drop-zone" class="drop-zone" for="image-input">
             <input id="image-input" name="image" type="file" accept="image/png,image/jpeg,image/webp">
-            <span class="drop-icon" aria-hidden="true">+</span>
-            <span class="drop-title">Selecciona una imagen</span>
-            <span class="drop-hint">PNG, JPG o WEBP</span>
+            <span class="mana-orbit" aria-hidden="true">
+              <span class="mana-dot mana-dot-white"></span>
+              <span class="mana-dot mana-dot-blue"></span>
+              <span class="mana-dot mana-dot-black"></span>
+              <span class="mana-dot mana-dot-red"></span>
+              <span class="mana-dot mana-dot-green"></span>
+            </span>
+            <span class="drop-title">Choose or drop an image</span>
+            <span class="drop-hint">PNG, JPG, or WEBP</span>
           </label>
 
           <div class="preview-frame">
-            <img id="preview-image" alt="Vista previa de la imagen seleccionada">
-            <div id="empty-preview" class="empty-preview">Vista previa</div>
+            <img id="preview-image" alt="Selected upload preview">
+            <div id="empty-preview" class="empty-preview">
+              <span class="magic-word">Magic</span>
+              <span>The Gathering</span>
+            </div>
           </div>
 
           <button id="submit-button" class="primary-action" type="submit">
-            Reconocer cartas
+            Recognize Cards
           </button>
         </form>
       </section>
@@ -39,10 +49,10 @@
       <section class="results-panel" aria-labelledby="results-title">
         <div class="results-header">
           <div>
-            <p class="eyebrow">Resultado</p>
-            <h2 id="results-title">Cartas detectadas</h2>
+            <p class="eyebrow">Result</p>
+            <h2 id="results-title">Detected Cards</h2>
           </div>
-          <div id="status-pill" class="status-pill">Esperando imagen</div>
+          <div id="status-pill" class="status-pill">Waiting for image</div>
         </div>
 
         <div id="message" class="message" role="status"></div>

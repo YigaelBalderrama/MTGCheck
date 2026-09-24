@@ -20,5 +20,5 @@ def test_home_serves_card_scanner_page(client):
 
     assert response.status_code == 200
     assert response.mimetype == "text/html"
-    assert b"MTG Card Scanner" in response.data
+    assert b"Magic Card Scanner" in response.data
     assert b"/api/cards/recognize" in response.data
