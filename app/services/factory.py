@@ -13,6 +13,13 @@ from app.services.perspective_service import PerspectiveService
 from app.services.title_region_service import TitleRegionService
 
 
+def _optional_config_value(config: Config, key: str):
+    try:
+        return config[key]
+    except KeyError:
+        return None
+
+
 def create_card_recognition_service(config: Config) -> CardRecognitionService:
     if config["OPENCV_NUM_THREADS"] >= 0:
         cv2.setNumThreads(config["OPENCV_NUM_THREADS"])
@@ -54,6 +61,10 @@ def create_card_recognition_service(config: Config) -> CardRecognitionService:
             languages=config["OCR_LANGUAGES"],
             gpu=config["OCR_GPU"],
             preload=config["OCR_PRELOAD"],
+            model_storage_directory=_optional_config_value(
+                config,
+                "OCR_MODEL_STORAGE_DIR",
+            ),
         ),
         matching_service=matching_service,
         allowed_mime_types=config["ALLOWED_IMAGE_MIME_TYPES"],

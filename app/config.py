@@ -81,6 +81,7 @@ class BaseConfig:
     ]
     OCR_GPU = os.getenv("OCR_GPU", "false").lower() == "true"
     OCR_PRELOAD = os.getenv("OCR_PRELOAD", "false").lower() == "true"
+    OCR_MODEL_STORAGE_DIR = os.getenv("OCR_MODEL_STORAGE_DIR")
 
     SCRYFALL_BASE_URL = os.getenv("SCRYFALL_BASE_URL", "https://api.scryfall.com")
     SCRYFALL_TIMEOUT_SECONDS = float(os.getenv("SCRYFALL_TIMEOUT_SECONDS", "8"))

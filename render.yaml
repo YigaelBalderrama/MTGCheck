@@ -15,6 +15,12 @@ services:
       - key: OCR_GPU
         value: false
       - key: OCR_PRELOAD
-        value: false
+        value: true
+      - key: OCR_MODEL_STORAGE_DIR
+        value: /app/easyocr-models
+      - key: WEB_CONCURRENCY
+        value: 1
+      - key: GUNICORN_TIMEOUT
+        value: 180
       - key: SCRYFALL_USER_AGENT
         sync: false

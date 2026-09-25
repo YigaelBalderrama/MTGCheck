@@ -22,9 +22,11 @@ class OcrService:
         languages: list[str] | None = None,
         gpu: bool = False,
         preload: bool = False,
+        model_storage_directory: str | None = None,
     ) -> None:
         self.languages = languages or ["en"]
         self.gpu = gpu
+        self.model_storage_directory = model_storage_directory
         self._reader: Any | None = None
         if preload:
             self._get_reader()
@@ -109,5 +111,9 @@ class OcrService:
         if self._reader is None:
             import easyocr
 
-            self._reader = easyocr.Reader(self.languages, gpu=self.gpu)
+            reader_kwargs = {"gpu": self.gpu}
+            if self.model_storage_directory:
+                reader_kwargs["model_storage_directory"] = self.model_storage_directory
+
+            self._reader = easyocr.Reader(self.languages, **reader_kwargs)
         return self._reader
