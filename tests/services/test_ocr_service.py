@@ -4,6 +4,7 @@ import sys
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from app.services.ocr_service import OcrService
 
@@ -70,3 +71,23 @@ def test_ocr_batch_groups_images_by_shape(monkeypatch):
 
     assert [result.text for result in results] == ["text-40", "text-60", "text-40"]
     assert sorted(batched_shapes) == [(40, 200), (60, 200)]
+
+
+def test_tesseract_engine_parses_words_and_confidence(monkeypatch):
+    def fake_image_to_data(image, **kwargs):
+        return {
+            "text": ["", "Sol", "Ring"],
+            "conf": ["-1", "95", "85"],
+        }
+
+    fake_pytesseract = SimpleNamespace(
+        Output=SimpleNamespace(DICT="dict"),
+        image_to_data=fake_image_to_data,
+    )
+    monkeypatch.setitem(sys.modules, "pytesseract", fake_pytesseract)
+
+    service = OcrService(engine="tesseract")
+    result = service.extract_text(np.zeros((40, 200), dtype=np.uint8))
+
+    assert result.text == "Sol Ring"
+    assert result.confidence == pytest.approx(0.9)

@@ -23,15 +23,20 @@ class OcrService:
         gpu: bool = False,
         preload: bool = False,
         model_storage_directory: str | None = None,
+        engine: str = "easyocr",
     ) -> None:
         self.languages = languages or ["en"]
         self.gpu = gpu
         self.model_storage_directory = model_storage_directory
+        self.engine = engine.lower()
         self._reader: Any | None = None
         if preload:
             self._get_reader()
 
     def extract_text(self, image: np.ndarray) -> OcrResult:
+        if self.engine == "tesseract":
+            return self._extract_tesseract_text(image)
+
         reader = self._get_reader()
         raw_results = reader.readtext(
             image,
@@ -45,6 +50,9 @@ class OcrService:
     def extract_batch(self, images: list[np.ndarray]) -> list[OcrResult]:
         if not images:
             return []
+
+        if self.engine == "tesseract":
+            return [self._extract_tesseract_text(image) for image in images]
 
         reader = self._get_reader()
         if hasattr(reader, "readtext_batched"):
@@ -107,7 +115,53 @@ class OcrService:
         letters = sum(character.isalpha() for character in normalized)
         return letters / max(len(normalized), 1)
 
+    def _extract_tesseract_text(self, image: np.ndarray) -> OcrResult:
+        import pytesseract
+
+        payload = pytesseract.image_to_data(
+            image,
+            config="--psm 7",
+            lang=self._tesseract_language(),
+            output_type=pytesseract.Output.DICT,
+        )
+        words: list[str] = []
+        confidences: list[float] = []
+        for text, raw_confidence in zip(
+            payload.get("text", []),
+            payload.get("conf", []),
+            strict=False,
+        ):
+            stripped = str(text).strip()
+            if not stripped:
+                continue
+            try:
+                confidence = float(raw_confidence)
+            except (TypeError, ValueError):
+                confidence = -1.0
+            if confidence < 0:
+                continue
+            words.append(stripped)
+            confidences.append(confidence / 100.0)
+
+        if not words:
+            return OcrResult(text="", confidence=0.0)
+
+        return OcrResult(
+            text=" ".join(words),
+            confidence=max(0.0, min(1.0, sum(confidences) / len(confidences))),
+        )
+
+    def _tesseract_language(self) -> str:
+        language_map = {
+            "en": "eng",
+            "es": "spa",
+        }
+        return "+".join(language_map.get(language, language) for language in self.languages)
+
     def _get_reader(self) -> Any:
+        if self.engine != "easyocr":
+            return None
+
         if self._reader is None:
             import easyocr
 

@@ -12,10 +12,12 @@ services:
         value: run.py
       - key: CARD_LOOKUP_MODE
         value: scryfall_api
+      - key: OCR_ENGINE
+        value: tesseract
       - key: OCR_GPU
         value: false
       - key: OCR_PRELOAD
-        value: true
+        value: false
       - key: OCR_MODEL_STORAGE_DIR
         value: /app/easyocr-models
       - key: WEB_CONCURRENCY

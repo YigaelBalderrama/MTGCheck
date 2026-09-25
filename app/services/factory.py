@@ -65,6 +65,7 @@ def create_card_recognition_service(config: Config) -> CardRecognitionService:
                 config,
                 "OCR_MODEL_STORAGE_DIR",
             ),
+            engine=_optional_config_value(config, "OCR_ENGINE") or "easyocr",
         ),
         matching_service=matching_service,
         allowed_mime_types=config["ALLOWED_IMAGE_MIME_TYPES"],
