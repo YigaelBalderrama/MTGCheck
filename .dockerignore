@@ -1,0 +1,14 @@
+.git
+.idea
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+.EasyOCRTestModels
+.env
+data/*.sqlite
+data/*.sqlite-*
+data/scryfall-*.json
+data/scryfall-*.jsonl.gz
+tests/fixtures/multi_cards_reference.png
+*.py[cod]

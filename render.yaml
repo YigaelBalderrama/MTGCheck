@@ -22,5 +22,17 @@ services:
         value: 1
       - key: GUNICORN_TIMEOUT
         value: 180
+      - key: OMP_NUM_THREADS
+        value: 1
+      - key: MKL_NUM_THREADS
+        value: 1
+      - key: MAX_CARDS_PER_IMAGE
+        value: 6
+      - key: DETECTION_TARGET_MAX_DIMENSION
+        value: 1000
+      - key: CARD_WARP_WIDTH
+        value: 336
+      - key: CARD_WARP_HEIGHT
+        value: 468
       - key: SCRYFALL_USER_AGENT
         sync: false
